@@ -224,6 +224,7 @@ def unpack_verb(args):
     in_mrg = basestem + '.mrg'
     hedfile = namfile = mrgfile = None
     outputdir = basestem + '-unpacked'
+    namlength = 0x8 if basestem.find('voice') >= 0 else 0x20
 
     try:
         if str.upper(os.path.splitext(args.input)[1]) != '.HED':
@@ -256,7 +257,7 @@ def unpack_verb(args):
         first_word, = unpack_from('<L', blob)
         if first_word == 0xFFFFFFFF:
             continue
-        namfilename = None if namfile is None else read_0_string(namfile.read(0x20))
+        namfilename = None if namfile is None else read_0_string(namfile.read(namlength))
         entry = HedEntry(blob, name=namfilename)
         print("|- {0} - {1} b".format(entry.name, entry.size), file=stderr)
         newfilename = writefile_in_directory_with_collisions(outputdir, entry, mrgfile, collision_suffix=indexed_fmt.format(i))
@@ -316,7 +317,7 @@ def replace_verb(args):
             
     if len(sourcepaths) == 0:
         print("ERR: failed to process \"{0}\" - --source {1} does not match any file".format(args.filelist.name, args.source), file=stderr)
-            sys.exit(1)
+        sys.exit(1)
     elif len(sourcepaths) == 1:
         special_first = True
     else:
