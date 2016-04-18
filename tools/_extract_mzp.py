@@ -4,7 +4,7 @@
 # comes with ABSOLUTELY NO WARRANTY.
 #
 # Copyright (C) 2016 Hintay <hintay@me.com>
-# Copyright (C) 2016 Quibi
+# Portions Copyright (C) 2016 Quibi
 #
 # MZP image files extraction utility
 # For more information, see Specifications/mzp_format.md
