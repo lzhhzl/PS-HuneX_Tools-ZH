@@ -52,7 +52,7 @@ def extract_verb(args):
 	entries_descriptors = []
 	for i in range(number_of_entries):
 		sector_offset, offset, sector_size_upper_boundary, size  = struct.unpack('<HHHH', input_file.read(8))
-		entries_descriptors.append(ArchiveEntry(sector_offset = sector_offset, offset = offset, sector_size_upper_boundary = sector_size_upper_boundary, size = size, number_of_entries = number_of_entries))
+		entries_descriptors.append(ArchiveEntry(sector_offset, offset, sector_size_upper_boundary, size, number_of_entries))
 
 	if(args.bin): extract_bin(input_file_name, input_file, entries_descriptors, args.notmzx)
 	else: MzpFile(input_file_name, input_file, entries_descriptors)

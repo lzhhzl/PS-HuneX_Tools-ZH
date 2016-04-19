@@ -194,9 +194,19 @@ class MzpFile:
 				self.palettepng += b'\x00\x00\x00'
 				self.transpng += b'\xFF'
 		elif self.bmp_type == 0x08:
-			self.bitmapbpp	=	24
+			if self.bmp_depth == 0x14:
+				self.bitmapbpp	=	24
+			else:
+				print("Unknown depth 0x{:02X}".format(self.bmp_depth))
+				call(["cmd", "/c", "pause"])
+				sys.exit(1)
 		elif self.bmp_type == 0x0B:
-			self.bitmapbpp	=	32
+			if self.bmp_depth == 0x14:
+				self.bitmapbpp	=	32
+			else:
+				print("Unknown depth 0x{:02X}".format(self.bmp_depth))
+				call(["cmd", "/c", "pause"])
+				sys.exit(1)
 		elif self.bmp_type == 0x03:  # 'PEH' 8bpp + palette
 			print("Unsupported type 0x{:02X} (PEH)".format(self.bmp_type))
 			call(["cmd", "/c", "pause"])
@@ -205,12 +215,12 @@ class MzpFile:
 		del self.entries_descriptors[0]
 
 	def echo_format(self):
-		print('MZP Format: Width = %s, Height = %s, BMP Type = %s, BMP Depth = %s, Bytes Pre PX = %s' % (self.width, self.height, self.bmp_type, self.bmp_depth, self.bytesprepx))
-		print('Tile Format: Width = %s, Height = %s, X Count = %s, Y Count = %s, Tile Cut = %s' % (self.tile_width, self.tile_height, self.tile_x_count, self.tile_y_count, self.tile_crop))
+		print('MZP Format: Width = %s, Height = %s, Bitmap type = %s, Bitmap depth = %s, Bits per pixel = %s, Bytes Pre pixel = %s' % (self.width, self.height, self.bmp_type, self.bmp_depth, self.bitmapbpp, self.bytesprepx))
+		print('Tile Format: Width = %s, Height = %s, X count = %s, Y count = %s, Tile crop = %s' % (self.tile_width, self.tile_height, self.tile_x_count, self.tile_y_count, self.tile_crop))
 		if self.tile_crop:
 			width = self.width - self.tile_x_count * self.tile_crop * 2
 			height = self.height - self.tile_y_count * self.tile_crop * 2
-			print('Tile Real Size: Width = %s, Height = %s' % (width, height))
+			print('MZP Croped Size: Width = %s, Height = %s' % (width, height))
 
 	def extract_tile(self, index):
 		entry = self.entries_descriptors[index]
