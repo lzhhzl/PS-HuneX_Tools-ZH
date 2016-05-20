@@ -11,6 +11,7 @@
 # For more information, see Specifications/mzp_format.md
 #
 # Changelog (recent first):
+# 2016-05-20 Hintay: Fixed 4bpp conversion.
 # 2016-04-18 Hintay: Add 24/32bpp True-color support. (bmp_type = 0x08 or 0x0B)
 #                    Add pixel crop feature support.
 #                    Thanks to caoyang131 for 16bpp conversion.
@@ -122,6 +123,7 @@ class MzpFile:
 		self.transpng = b''
 		self.extract_desc()
 		self.bytesprepx = self.bitmapbpp // 8
+		if self.bytesprepx == 0: self.bytesprepx = 1
 		self.echo_format()
 		self.rows = [b''] * (self.height - self.tile_y_count * self.tile_crop)
 		self.loop_data()
