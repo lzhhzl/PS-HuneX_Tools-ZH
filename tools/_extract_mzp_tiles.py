@@ -11,6 +11,7 @@
 # For more information, see Specifications/mzp_format.md
 #
 # Changelog (recent first):
+# 2016-05-30 Hintay: Fixed 4bpp conversion and add 4bpp Alpha-channel to 8bpp for 4bpp MZPs.
 # 2016-05-20 Hintay: Fixed 4bpp conversion.
 # 2016-04-18 Hintay: Add 24/32bpp True-color support. (bmp_type = 0x08 or 0x0B)
 #                    Add pixel crop feature support.
@@ -158,7 +159,15 @@ class MzpFile:
 					r = self.data.read(1)
 					g = self.data.read(1)
 					b = self.data.read(1)
-					a = self.data.read(1)
+
+					#a = self.data.read(1)
+					# Experimental 
+					# 4bpp Alpha-channel to 8bpp
+					# Author: Hintay <hintay@me.com>
+					temp_a, = unpack('B', self.data.read(1))
+					a = (temp_a << 1) + (temp_a >> 6) if(temp_a < 0x80) else 255
+					a = pack('B', a)
+
 					self.paletteblob += (b + g + r + a)
 					self.palettepng += (r + g + b)
 					self.transpng += a
@@ -233,7 +242,7 @@ class MzpFile:
 			tiledata = b''
 			for octet in decbuf:
 				thebyte = Byte(octet)
-				tiledata += pack('BB', thebyte.high, thebyte.low)
+				tiledata += pack('BB', thebyte.low, thebyte.high)
 			decbuf = tiledata
 
 		# RGB/RGBA truecolor for 0x08 and 0x0B bmp type
