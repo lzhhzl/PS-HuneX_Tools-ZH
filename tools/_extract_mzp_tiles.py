@@ -114,9 +114,8 @@ def is_indexed_bitmap(bmpinfo):
 	return bmpinfo == 0x01
 
 class MzpFile:
-	def __init__(self, filename, data, entries_descriptors):
-		self.filename = filename
-		self.basename = os.path.splitext(filename)[0]
+	def __init__(self, base_name, data, entries_descriptors):
+		self.base_name = base_name
 		self.data = data
 		self.entries_descriptors = entries_descriptors
 		self.paletteblob = b''
@@ -154,7 +153,7 @@ class MzpFile:
 				call(["cmd", "/c", "pause"])
 				sys.exit(1)
 
-			if self.bmp_depth in [0x00, 0x01, 0x10]:
+			if self.bmp_depth in [0x00, 0x10]:
 				for i in range(self.palettecount):
 					r = self.data.read(1)
 					g = self.data.read(1)
@@ -173,7 +172,7 @@ class MzpFile:
 					self.transpng += a
 			# :PalType:RGBATim2:
 			# Author: caoyang131
-			elif self.bmp_depth in [0x11, 0x91]:
+			elif self.bmp_depth in [0x11, 0x91, 0x01]:
 				pal_start = self.data.tell()
 				for h in range(0, self.palettecount * 4 // 0x80, 1):
 					for i in range(2):
@@ -297,7 +296,7 @@ class MzpFile:
 
 	# 输出PNG
 	def output_png(self):
-		pngoutpath = "{}.png".format(self.basename)
+		pngoutpath = self.base_name + '.png'
 		with open(pngoutpath, 'wb') as pngout:
 			write_pngsig(pngout)
 			width = self.width - self.tile_x_count * self.tile_crop * 2
