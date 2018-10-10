@@ -2,6 +2,7 @@
 
 from struct import unpack, pack
 
+
 def mzx0_compress(f, inlen, xorff=False):
     """Compress a block of data.
     """

@@ -24,12 +24,14 @@ class CustomException(Exception):
 def makedir(dirname):
     try:
         os.makedirs(dirname)
-    except OSError as exc: # Python >2.5
+    except OSError as exc:  # Python >2.5
         if exc.errno == errno.EEXIST and os.path.isdir(dirname):
             pass
-        else: raise
+        else:
+            raise
 
-def process_directory(sourcedirpath, args, mask = '*.txt'):
+
+def process_directory(sourcedirpath, args, mask='*.txt'):
     successful = failed = 0
     for filepath in glob.iglob(os.path.join(sourcedirpath, mask)):
         s = process_path(filepath, args)
@@ -39,6 +41,7 @@ def process_directory(sourcedirpath, args, mask = '*.txt'):
             successful += 1
     return [successful, failed]
 
+
 def process_path(sourcepath, args):
     infile = None
     outpath = None
@@ -46,7 +49,7 @@ def process_path(sourcepath, args):
         basename_src = os.path.basename(sourcepath)
 
         # using split() b/c source basename generally has multiple dots
-        basename_inter = basename_src.split('.', 2)[0] + '.pre-comp.sjs'  
+        basename_inter = basename_src.split('.', 2)[0] + '.pre-comp.sjs'
         basename_mzx = basename_src.split('.', 2)[0] + '.MZX'  # using split() b/c it generally has multiple dots
         print("* {0} => {1}: ".format(basename_src, basename_mzx), end="")
         if str.upper(os.path.splitext(basename_src)[1]) == '.MZX':
@@ -60,7 +63,7 @@ def process_path(sourcepath, args):
         lnum = 1
         fulwidcomma = chr(0xff0c)
         for l in infile.readlines():
-            #processed_lines.append(l.rstrip('\r\n'))
+            # processed_lines.append(l.rstrip('\r\n'))
             l = l.rstrip('\r\n')
             m = re.search(r'^<[0-9]+>(.+)', l)
             if m is not None:
@@ -75,8 +78,11 @@ def process_path(sourcepath, args):
                 else:
                     befo = afte = ""
                     subj = line
-                line = befo + subj.replace(", ", fulwidcomma).replace(",", fulwidcomma).replace(";/", ",").replace("(", chr(0xff08)).replace(")", chr(0xff09)).replace("_n", "@n").replace("_r", "^") + afte
-                #TODO: process actor name translation here
+                line = befo + subj.replace(", ", fulwidcomma).replace(",", fulwidcomma).replace(";/", ",").replace("(",
+                                                                                                                   chr(
+                                                                                                                       0xff08)).replace(
+                    ")", chr(0xff09)).replace("_n", "@n").replace("_r", "^") + afte
+                # TODO: process actor name translation here
                 processed_lines.append(line)
             elif len(l) > 1 and l[0] == '!':
                 processed_lines.append(l[1:])
@@ -84,7 +90,8 @@ def process_path(sourcepath, args):
                 if len(l) > 0:
                     m = re.search(r'^~(.*)~$', l)
                     if m is None:
-                        print("WRN: \"{0}\" line {1} - {2}".format(sourcepath, lnum, "text should be enclosed in ~~ " + l), file=stderr)
+                        print("WRN: \"{0}\" line {1} - {2}".format(sourcepath, lnum,
+                                                                   "text should be enclosed in ~~ " + l), file=stderr)
                     else:
                         processed_lines.append(m.group(1))
             lnum += 1
@@ -104,7 +111,8 @@ def process_path(sourcepath, args):
     except CustomException as exc:
         print("[FAILED]")
         nfailed += 1
-        print("ERR: [{1}] failed to process \"{0}\" - {2}".format(sourcepath, type(exc).__name__, str(exc)), file=stderr)
+        print("ERR: [{1}] failed to process \"{0}\" - {2}".format(sourcepath, type(exc).__name__, str(exc)),
+              file=stderr)
         if outpath is not None and os.path.isfile(outpath):
             try:
                 os.remove(outpath)
@@ -114,7 +122,6 @@ def process_path(sourcepath, args):
     finally:
         if infile is not None:
             infile.close()
-
 
 
 ############
@@ -128,12 +135,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Compress one or several files as MZX')
     parser.add_argument('inputs', metavar='input_file', nargs='+', help='Input file(s)')
-    parser.add_argument('-o', '--output-dir', 
-            default=None, dest='outputdir',
-            help='Output directory (default: 40buildedscript)')
-    parser.add_argument('-t', '--temp-dir', 
-            default=None, dest='tempdir',
-            help='Temporary directory (default: 35precompscript)')
+    parser.add_argument('-o', '--output-dir',
+                        default=None, dest='outputdir',
+                        help='Output directory (default: 40buildedscript)')
+    parser.add_argument('-t', '--temp-dir',
+                        default=None, dest='tempdir',
+                        help='Temporary directory (default: 35precompscript)')
     args = parser.parse_args()
     if args.outputdir is None:
         args.outputdir = "40buildedscript"
@@ -145,7 +152,8 @@ if __name__ == '__main__':
         for dir in [args.outputdir, args.tempdir]:
             makedir(dir)
     except Exception as exc:
-        print("ERR: [{1}] failed to create specified output directory \"{0}\" - {2}".format(dir, type(exc).__name__, str(exc)), file=stderr)
+        print("ERR: [{1}] failed to create specified output directory \"{0}\" - {2}".format(dir, type(exc).__name__,
+                                                                                            str(exc)), file=stderr)
         sys.exit(1)
 
     npassed = nfailed = 0
@@ -164,6 +172,5 @@ if __name__ == '__main__':
 
         npassed += successful
         nfailed += failed
-
 
     print("Passed = {0}\nFailed = {1}".format(npassed, nfailed))

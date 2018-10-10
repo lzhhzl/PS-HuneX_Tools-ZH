@@ -1,72 +1,64 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from struct import unpack
+# MZX Decompress Library
+# Pure Python. Based on Mzx.cpp from ExtractData.
+#
+# FOR INTERNAL USE ONLY.
+#
+# Copyright (c) 2018 <hintay@me.com>
+
+from io import BytesIO
+
 
 def mzx0_decompress(f, inlen, exlen, xorff=False):
-    """Decompress a block of data.
     """
-    dout = bytearray(b'\0' * (exlen+50)) # slightly overprovision for writes past end of buffer
-    ringbuf = bytearray(b'\0' * 128)
-    ring_wpos = 0
-    clear_count = 0
-    offset = 0
-    max = f.tell() + inlen
-    last1 = last2 = 0
-    status = "UNK"
-    try:
-        while offset < exlen:
-            if f.tell() >= max:
-                break
-            if clear_count <= 0:
-                clear_count = 0x1000
-                last1 = last2 = 0
-            flags = ord(f.read(1))
-            #print("+ %X %X %X" % (flags, f.tell(), offset))
-            
-            clear_count -= 1 if (flags & 0x03) == 2 else flags // 4 + 1
-
-            if flags & 0x03 == 0:
-                for i in range(flags // 4 + 1):
-                    dout[offset  ] = last1
-                    dout[offset+1] = last2
-                    offset += 2
-
-            elif flags & 0x03 == 1:
-                k = ord(f.read(1))
-                k = 2 * (k+1)
-                for i in range(flags // 4 + 1):
-                    # read two previous bytes in sliding
-                    dout[offset] = dout[offset - k]
-                    offset += 1
-                    dout[offset] = dout[offset - k]
-                    offset += 1
-
-                last1 = dout[offset-2]
-                last2 = dout[offset-1]
-
-            elif flags & 0x03 == 2:
-                dout[offset  ] = last1 = ringbuf[2 * (flags // 4)]
-                dout[offset+1] = last2 = ringbuf[2 * (flags // 4) + 1]
-                offset += 2
-
-            else:
-                for i in range(flags // 4 + 1):
-                    if f.tell() >= max:
-                        break
-                    last1 = ringbuf[ring_wpos] = dout[offset] = ord(f.read(1))
-                    ring_wpos += 1
-                    offset += 1
-                    last2 = ringbuf[ring_wpos] = dout[offset] = ord(f.read(1))
-                    ring_wpos += 1
-                    offset += 1
-                    ring_wpos &= 0x7F
-
-            if offset >= exlen:
-                break
-        status = "OK"
-    except IndexError:
-        status = "ERR"
-        pass
-
+    Decompress a block of data.
+    """
     key = 0xFF
-    return [status, bytearray(x ^ key for x in dout[0:exlen])] if xorff else [status, dout[0:exlen]]
+
+    out_data = BytesIO()  # slightly overprovision for writes past end of buffer
+    ring_buf = [b'\xFF\xFF'] * 64 if xorff else [b'\x00\x00'] * 64
+    ring_wpos = 0
+
+    clear_count = 0
+    max = f.tell() + inlen
+    last = b'\xFF\xFF' if xorff else b'\x00\x00'
+
+    while out_data.tell() < exlen:
+        if f.tell() >= max:
+            break
+        if clear_count <= 0:
+            clear_count = 0x1000
+            last = b'\xFF\xFF' if xorff else b'\x00\x00'
+        flags = ord(f.read(1))
+        # print("+ %X %X %X" % (flags, f.tell(), out_data.tell()))
+
+        clear_count -= 1 if (flags & 0x03) == 2 else flags // 4 + 1
+
+        if flags & 0x03 == 0:
+            out_data.write(last * ((flags // 4) + 1))
+
+        elif flags & 0x03 == 1:
+            k = 2 * (ord(f.read(1)) + 1)
+            for i in range(flags // 4 + 1):
+                out_data.seek(-k, 1)
+                last = out_data.read(2)
+                out_data.seek(0, 2)
+                out_data.write(last)
+
+        elif flags & 0x03 == 2:
+            last = ring_buf[flags // 4]
+            out_data.write(last)
+
+        else:
+            for i in range(flags // 4 + 1):
+                last = ring_buf[ring_wpos] = bytes([byte ^ key for byte in f.read(2)]) if xorff else f.read(2)
+                out_data.write(last)
+
+                ring_wpos += 1
+                ring_wpos %= 64
+    status = "OK"
+
+    out_data.truncate(exlen)  # Resize stream to decompress size
+    out_data.seek(0)
+    return [status, out_data]
