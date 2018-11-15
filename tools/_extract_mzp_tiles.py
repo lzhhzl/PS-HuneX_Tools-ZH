@@ -35,11 +35,13 @@ class Byte(object):
 
     @property
     def high(self):
-        return self.number >> 4
+        for byte in self.number:
+            yield byte >> 4
 
     @property
     def low(self):
-        return self.number & 0x0F
+        for byte in self.number:
+            yield byte & 0x0F
 
 
 def write_pngsig(f):
@@ -256,7 +258,8 @@ class MzpFile:
             tiledata = b''
             for octet in decbuf:
                 thebyte = Byte(octet)
-                tiledata += pack('BB', thebyte.low, thebyte.high)
+                for low, high in zip(thebyte.low, thebyte.high):
+                    tiledata += pack('BB', low, high)
             decbuf = tiledata
 
         # RGB/RGBA truecolor for 0x08 and 0x0B bmp type
