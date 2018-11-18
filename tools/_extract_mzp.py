@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# MZP Extractor version 1.0
+# MZP Extractor version 1.1
 # comes with ABSOLUTELY NO WARRANTY.
 #
 # Copyright (C) 2016 Hintay <hintay@me.com>
@@ -9,10 +9,14 @@
 # MZP image files extraction utility
 # For more information, see Specifications/mzp_format.md
 
-from _extract_mzp_tiles import *
 import struct
-import os
+import sys
+import logging
 import argparse
+from pathlib import Path
+from struct import unpack
+from mzx.decomp_mzx0 import mzx0_decompress
+from _extract_mzp_tiles import MzpFile
 
 
 class ArchiveEntry:
@@ -47,36 +51,36 @@ def parse_args():
 # extract verb #
 ################
 def extract_check(args):
-    if not os.path.exists(args.input):
+    file_path = Path(args.input)
+    if not file_path.exists():
         parser.print_usage()
-        print('Error: the following file or folder does not exist: ' + args.input)
+        logging.error('Error: the following file or folder does not exist: ' + args.input)
         sys.exit(20)
 
-    if os.path.isfile(args.input):
-        extract_verb(args)
-    else:  # �ļ���
-        for root, dirs, files in os.walk(args.input):
-            for file in files:
-                if file.endswith('MZP'):
-                    extract_verb(args, root, file)
+    if file_path.is_file():
+        extract_verb(args, file_path)
+    else:
+        for file in file_path.glob('**/*'):
+            if file.suffix == 'MZP':
+                extract_verb(args, file)
 
 
-def extract_verb(args, root='.', file=None):
-    input_file_name = os.path.join(root, file) if (file != None) else args.input
-    input_base_name = os.path.splitext(input_file_name)[0]
+def extract_verb(args, file: Path):
+    if args.ignore_extracted and file.with_suffix('.png').exists():
+        return
 
-    if (args.ignore_extracted and os.path.exists(input_base_name + '.png')): return
-
-    with open(input_file_name, 'rb') as input_file:
+    with file.open('rb') as input_file:
         header = input_file.read(6)
-        if (header != b'mrgd00'): return
+        if header != b'mrgd00':
+            return
 
-        print('\nExtracting from ' + input_file_name, file=sys.stderr)
-        print('header: {0}'.format(header.decode('ASCII')))
+        logging.info('Extracting from ' + file.name)
+        logging.debug('header: {0}'.format(header.decode('ASCII')))
 
         number_of_entries, = struct.unpack('<H', input_file.read(2))
-        print('found {0} entries'.format(number_of_entries))
-        if (not number_of_entries): return
+        logging.debug('found {0} entries'.format(number_of_entries))
+        if not number_of_entries:
+            return
 
         entries_descriptors = []
         for i in range(number_of_entries):
@@ -84,17 +88,17 @@ def extract_verb(args, root='.', file=None):
             entries_descriptors.append(
                 ArchiveEntry(sector_offset, offset, sector_size_upper_boundary, size, number_of_entries))
 
-        if (args.bin):
-            extract_bin(input_base_name, input_file, entries_descriptors, args.notmzx)
+        if args.bin:
+            extract_bin(file, input_file, entries_descriptors, args.notmzx)
         else:
-            MzpFile(input_base_name, input_file, entries_descriptors)
+            MzpFile(file, input_file, entries_descriptors)
 
 
-def extract_bin(input_base_name, input_file, entries_descriptors, notmzx):
-    output_dir = input_base_name + '-unpacked'
+def extract_bin(file: Path, input_file, entries_descriptors, not_mzx):
+    output_dir = file.with_name(file.name + '-unpacked').with_suffix('')
 
-    if not os.path.isdir(output_dir):
-        os.mkdir(output_dir)
+    if not output_dir.is_dir():
+        output_dir.mkdir()
 
     for index, entry in enumerate(entries_descriptors):
         input_file.seek(entry.real_offset)
@@ -102,16 +106,16 @@ def extract_bin(input_base_name, input_file, entries_descriptors, notmzx):
 
         # Desc
         if index == 0:
-            desc_file_name = os.path.join(output_dir, '0desc.bin')
+            desc_file_name = output_dir.joinpath('0desc.bin')
             write_file(data, desc_file_name)
             continue
 
         file_name = 'tile' + str(index)
-        if notmzx:
-            mzx_file_name = os.path.join(output_dir, file_name + '.mzx')
+        if not_mzx:
+            mzx_file_name = output_dir.joinpath(file_name + '.mzx')
             write_file(data, mzx_file_name)
         else:
-            extract_file_name = os.path.join(output_dir, file_name + '.ucp')
+            extract_file_name = output_dir.joinpath(file_name + '.ucp')
             input_file.seek(entry.real_offset)
             sig, size = unpack('<LL', input_file.read(0x8))
             status, extract_data = mzx0_decompress(input_file, entry.real_size - 8, size)
@@ -129,6 +133,7 @@ def write_file(data, output_file_name):
 ############
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
     parser, args = parse_args()
     if args.input is not None:
         extract_check(args)

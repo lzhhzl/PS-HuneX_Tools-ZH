@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# MZP Tiles Extraction Library version 1.3
+# MZP Tiles Extraction Library version 1.4
 # comes with ABSOLUTELY NO WARRANTY.
 #
 # Copyright (C) 2016 Hintay <hintay@me.com>
@@ -21,11 +21,14 @@
 # 2016-04-09 Hintay: Encapsulated as a library.
 
 import sys
+import zlib
+import logging
+from pathlib import Path
 from struct import unpack, pack
 from subprocess import call
-import glob
-import zlib
 from mzx.decomp_mzx0 import mzx0_decompress
+
+logger = logging.Logger('MZP')
 
 
 # http://blog.flip-edesign.com/?p=23
@@ -35,13 +38,11 @@ class Byte(object):
 
     @property
     def high(self):
-        for byte in self.number:
-            yield byte >> 4
+        return self.number >> 4
 
     @property
     def low(self):
-        for byte in self.number:
-            yield byte & 0x0F
+        return self.number & 0x0F
 
 
 def write_pngsig(f):
@@ -122,53 +123,55 @@ def chunks(l, n):
 #           descriptor;         // Image attribute flags.
 # };
 
-def is_indexed_bitmap(bmpinfo):
-    return bmpinfo == 0x01
+def is_indexed_bitmap(bmp_info):
+    return bmp_info == 0x01
 
 
 class MzpFile:
-    def __init__(self, base_name, data, entries_descriptors):
-        self.base_name = base_name
+    def __init__(self, file: Path, data, entries_descriptors):
+        self.file = file
         self.data = data
         self.entries_descriptors = entries_descriptors
         self.paletteblob = b''
         self.palettepng = b''
         self.transpng = b''
         self.extract_desc()
-        self.bytesprepx = self.bitmapbpp // 8
-        if self.bytesprepx == 0: self.bytesprepx = 1
-        self.echo_format()
+        self.bytesprepx = self.bitmap_bpp // 8
+        if self.bytesprepx == 0:
+            self.bytesprepx = 1
+        self.debug_format()
         self.rows = [b''] * (self.height - self.tile_y_count * self.tile_crop)
         self.loop_data()
         self.output_png()
 
     def extract_desc(self):
         self.data.seek(self.entries_descriptors[0].real_offset)
-        self.width, self.height, self.tile_width, self.tile_height, self.tile_x_count, self.tile_y_count, self.bmp_type, self.bmp_depth, self.tile_crop = unpack(
-            '<HHHHHHHBB', self.data.read(0x10))
+        self.width, self.height, self.tile_width, self.tile_height, self.tile_x_count, self.tile_y_count,\
+            self.bmp_type, self.bmp_depth, self.tile_crop = unpack('<HHHHHHHBB', self.data.read(0x10))
         self.tile_size = self.tile_width * self.tile_height
         if self.bmp_type not in [0x01, 0x03, 0x08, 0x0B]:
-            print("Unknown type 0x{:02X}".format(self.bmp_type))
+            logger.error("Unknown type 0x{:02X}".format(self.bmp_type))
             call(["cmd", "/c", "pause"])
             sys.exit(1)
+
         # 有索引
         if is_indexed_bitmap(self.bmp_type):
             if self.bmp_depth == 0x01:
-                self.bitmapbpp = 8
-                self.palettecount = 0x100
+                self.bitmap_bpp = 8
+                self.palette_count = 0x100
             elif self.bmp_depth == 0x00 or self.bmp_depth == 0x10:
-                self.bitmapbpp = 4
-                self.palettecount = 0x10
+                self.bitmap_bpp = 4
+                self.palette_count = 0x10
             elif self.bmp_depth == 0x11 or self.bmp_depth == 0x91:
-                self.bitmapbpp = 8
-                self.palettecount = 0x100
+                self.bitmap_bpp = 8
+                self.palette_count = 0x100
             else:
-                print("Unknown depth 0x{:02X}".format(self.bmp_depth))
+                logger.error("Unknown depth 0x{:02X}".format(self.bmp_depth))
                 call(["cmd", "/c", "pause"])
                 sys.exit(1)
 
             if self.bmp_depth in [0x00, 0x10]:
-                for i in range(self.palettecount):
+                for i in range(self.palette_count):
                     r = self.data.read(1)
                     g = self.data.read(1)
                     b = self.data.read(1)
@@ -184,11 +187,12 @@ class MzpFile:
                     self.paletteblob += (b + g + r + a)
                     self.palettepng += (r + g + b)
                     self.transpng += a
+
             # :PalType:RGBATim2:
             # Author: caoyang131
             elif self.bmp_depth in [0x11, 0x91, 0x01]:
                 pal_start = self.data.tell()
-                for h in range(0, self.palettecount * 4 // 0x80, 1):
+                for h in range(0, self.palette_count * 4 // 0x80, 1):
                     for i in range(2):
                         for j in range(2):
                             self.data.seek(h * 0x80 + (i + j * 2) * 0x20 + pal_start)
@@ -208,134 +212,135 @@ class MzpFile:
                                 self.palettepng += (r + g + b)
                                 self.transpng += a
             else:
-                print("Unsupported palette type 0x{:02X}".format(self.bmp_depth))
+                logger.error("Unsupported palette type 0x{:02X}".format(self.bmp_depth))
                 call(["cmd", "/c", "pause"])
                 sys.exit(1)
 
             # 补全索引
-            for i in range(self.palettecount, 0x100):
+            for i in range(self.palette_count, 0x100):
                 self.paletteblob += b'\x00\x00\x00\xFF'
                 self.palettepng += b'\x00\x00\x00'
                 self.transpng += b'\xFF'
         elif self.bmp_type == 0x08:
             if self.bmp_depth == 0x14:
-                self.bitmapbpp = 24
+                self.bitmap_bpp = 24
             else:
-                print("Unknown depth 0x{:02X}".format(self.bmp_depth))
+                logger.error("Unknown depth 0x{:02X}".format(self.bmp_depth))
                 call(["cmd", "/c", "pause"])
                 sys.exit(1)
         elif self.bmp_type == 0x0B:
             if self.bmp_depth == 0x14:
-                self.bitmapbpp = 32
+                self.bitmap_bpp = 32
             else:
-                print("Unknown depth 0x{:02X}".format(self.bmp_depth))
+                logger.error("Unknown depth 0x{:02X}".format(self.bmp_depth))
                 call(["cmd", "/c", "pause"])
                 sys.exit(1)
         elif self.bmp_type == 0x03:  # 'PEH' 8bpp + palette
-            print("Unsupported type 0x{:02X} (PEH)".format(self.bmp_type))
+            logger.error("Unsupported type 0x{:02X} (PEH)".format(self.bmp_type))
             call(["cmd", "/c", "pause"])
             sys.exit(1)
 
         del self.entries_descriptors[0]
 
-    def echo_format(self):
-        print(
-            'MZP Format: Width = %s, Height = %s, Bitmap type = %s, Bitmap depth = %s, Bits per pixel = %s, Bytes Pre pixel = %s' % (
-                self.width, self.height, self.bmp_type, self.bmp_depth, self.bitmapbpp, self.bytesprepx))
-        print('Tile Format: Width = %s, Height = %s, X count = %s, Y count = %s, Tile crop = %s' % (
+    def debug_format(self):
+        logger.debug(
+            'MZP Format: Width = %s, Height = %s, Bitmap type = %s, Bitmap depth = %s, Bits per pixel = %s, '
+            'Bytes Pre pixel = %s' % (
+                self.width, self.height, self.bmp_type, self.bmp_depth, self.bitmap_bpp, self.bytesprepx))
+        logger.debug('Tile Format: Width = %s, Height = %s, X count = %s, Y count = %s, Tile crop = %s' % (
             self.tile_width, self.tile_height, self.tile_x_count, self.tile_y_count, self.tile_crop))
         if self.tile_crop:
             width = self.width - self.tile_x_count * self.tile_crop * 2
             height = self.height - self.tile_y_count * self.tile_crop * 2
-            print('MZP Croped Size: Width = %s, Height = %s' % (width, height))
+            logger.debug('MZP Cropped Size: Width = %s, Height = %s' % (width, height))
 
     def extract_tile(self, index):
         entry = self.entries_descriptors[index]
         self.data.seek(entry.real_offset)
         sig, size = unpack('<LL', self.data.read(0x8))
-        status, decbuf = mzx0_decompress(self.data, entry.real_size - 8, size)
-        if self.bitmapbpp == 4:
-            tiledata = b''
-            for octet in decbuf:
-                thebyte = Byte(octet)
-                for low, high in zip(thebyte.low, thebyte.high):
-                    tiledata += pack('BB', low, high)
-            decbuf = tiledata
+        status, dec_buf = mzx0_decompress(self.data, entry.real_size - 8, size)
+        dec_buf = dec_buf.read()
+        if self.bitmap_bpp == 4:
+            tile_data = b''
+            for octet in dec_buf:
+                the_byte = Byte(octet)
+                tile_data += pack('BB', the_byte.low, the_byte.high)
+            dec_buf = tile_data
 
-        # RGB/RGBA truecolor for 0x08 and 0x0B bmp type
-        elif self.bitmapbpp in [24, 32] and self.bmp_type in [0x08, 0x0B]:
+        # RGB/RGBA true color for 0x08 and 0x0B bmp type
+        elif self.bitmap_bpp in [24, 32] and self.bmp_type in [0x08, 0x0B]:
             # 16bpp
-            tiledata = b''
+            tile_data = b''
             for index in range(self.tile_size):
-                P = decbuf[index * 2]
-                Q = decbuf[(index * 2) + 1]
+                P = dec_buf[index * 2]
+                Q = dec_buf[(index * 2) + 1]
                 b = (P & 0x1f) << 3
                 g = (Q & 0x07) << 5 | (P & 0xe0) >> 3
                 r = (Q & 0xf8)
 
                 # Offset for 16bpp to 24bpp
-                offset_byte = decbuf[self.tile_size * 2 + index]
+                offset_byte = dec_buf[self.tile_size * 2 + index]
                 r_offset = offset_byte >> 5
                 g_offset = (offset_byte & 0x1f) >> 3
                 b_offset = offset_byte & 0x7
 
                 # Alpha
-                if self.bitmapbpp == 32:
-                    a = decbuf[self.tile_size * 3 + index]
-                    tiledata += pack('BBBB', r + r_offset, g + g_offset, b + b_offset, a)
+                if self.bitmap_bpp == 32:
+                    a = dec_buf[self.tile_size * 3 + index]
+                    tile_data += pack('BBBB', r + r_offset, g + g_offset, b + b_offset, a)
                 else:
-                    tiledata += pack('BBB', r + r_offset, g + g_offset, b + b_offset)
-            decbuf = tiledata
-        return decbuf
+                    tile_data += pack('BBB', r + r_offset, g + g_offset, b + b_offset)
+            dec_buf = tile_data
+        return dec_buf
 
     def loop_data(self):
         for y in range(self.tile_y_count):
-            startrownum = y * (self.tile_height - self.tile_crop * 2)  # 上下切边
-            rowcount = min(self.height, startrownum + self.tile_height) - startrownum - self.tile_crop * 2  # 共几行
-            self.loop_x(y, startrownum, rowcount)
+            start_row = y * (self.tile_height - self.tile_crop * 2)  # 上下切边
+            rowcount = min(self.height, start_row + self.tile_height) - start_row - self.tile_crop * 2  # 共几行
+            self.loop_x(y, start_row, rowcount)
 
-    def loop_x(self, y, startrownum, rowcount):
+    def loop_x(self, y, start_row, rowcount):
         # Tile 块处理
         for x in range(self.tile_x_count):
-            decbuf = self.extract_tile(self.tile_x_count * y + x)
+            dec_buf = self.extract_tile(self.tile_x_count * y + x)
 
-            for i, tilerow_rawpixels in enumerate(chunks(decbuf, self.tile_width * self.bytesprepx)):
+            for i, tile_row_px in enumerate(chunks(dec_buf, self.tile_width * self.bytesprepx)):
                 if i < self.tile_crop:
                     continue
                 if (i - self.tile_crop) >= rowcount:
                     break
-                curwidth = len(self.rows[startrownum + i - self.tile_crop])
-                pxcount = min(self.width, curwidth + self.tile_width) * self.bytesprepx - curwidth
+                cur_width = len(self.rows[start_row + i - self.tile_crop])
+                px_count = min(self.width, cur_width + self.tile_width) * self.bytesprepx - cur_width
                 try:
-                    temp_row = tilerow_rawpixels[:pxcount]
-                    self.rows[startrownum + i - self.tile_crop] += temp_row[self.tile_crop * self.bytesprepx: len(
+                    temp_row = tile_row_px[:px_count]
+                    self.rows[start_row + i - self.tile_crop] += temp_row[self.tile_crop * self.bytesprepx: len(
                         temp_row) - self.tile_crop * self.bytesprepx]
-                except(IndexError):
-                    print(startrownum + i - self.tile_crop)
+                except IndexError:
+                    logger.error(start_row + i - self.tile_crop)
 
     # 输出PNG
     def output_png(self):
-        pngoutpath = self.base_name + '.png'
-        with open(pngoutpath, 'wb') as pngout:
-            write_pngsig(pngout)
+        png_path = self.file.with_suffix('.png')
+        with png_path.open('wb') as png:
+            write_pngsig(png)
             width = self.width - self.tile_x_count * self.tile_crop * 2
             height = self.height - self.tile_y_count * self.tile_crop * 2
             if is_indexed_bitmap(self.bmp_type):
-                write_ihdr(pngout, width, height, 8, 3)  # 8bpp (PLTE)
-                write_plte(pngout, self.palettepng)
-                write_trns(pngout, self.transpng)
+                write_ihdr(png, width, height, 8, 3)  # 8bpp (PLTE)
+                write_plte(png, self.palettepng)
+                write_trns(png, self.transpng)
 
-            elif self.bitmapbpp == 24:  # RGB True-color
-                write_ihdr(pngout, width, height, 8, 2)  # 24bpp
+            elif self.bitmap_bpp == 24:  # RGB True-color
+                write_ihdr(png, width, height, 8, 2)  # 24bpp
 
-            elif self.bitmapbpp == 32:  # RGBA True-color
-                write_ihdr(pngout, width, height, 8, 6)  # 32bpp
+            elif self.bitmap_bpp == 32:  # RGBA True-color
+                write_ihdr(png, width, height, 8, 6)  # 32bpp
 
             # split into rows and add png filtering info (mandatory even with no filter)
-            rowdata = b''
+            row_data = b''
             for row in self.rows:
-                rowdata += b'\x00' + row
+                row_data += b'\x00' + row
 
-            write_idat(pngout, rowdata)
-            write_iend(pngout)
+            write_idat(png, row_data)
+            write_iend(png)
     # call(["cmd", "/c", "start", pngoutpath])

@@ -10,7 +10,7 @@
 from io import BytesIO
 
 
-def mzx0_decompress(f, inlen, exlen, xorff=False):
+def mzx0_decompress(f, inlen, exlen, xorff=False) -> [str, BytesIO]:
     """
     Decompress a block of data.
     """
