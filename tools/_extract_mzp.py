@@ -61,7 +61,7 @@ def extract_check(args):
         extract_verb(args, file_path)
     else:
         for file in file_path.glob('**/*'):
-            if file.suffix == 'MZP':
+            if file.suffix == '.MZP':
                 extract_verb(args, file)
 
 
