@@ -21,7 +21,10 @@ MODE = 'fate'
 
 def parse_args():
     if len(sys.argv) > 1:
-        return Path(sys.argv[1])
+        args = Path(sys.argv[1])
+        if args.is_dir(): return args
+        elif args.is_file(): return args.parent
+
     else: return Path('.')
 
 class ArchiveEntry:
