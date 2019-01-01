@@ -72,9 +72,9 @@ def process_path(sourcepath):
 
         outcoll = []
         counter = 0
-        for instr in decbuf.split(b';'):
+        for instr in decbuf.getbuffer().tobytes().split(b';'):
             counter += 1
-            instrtext = instr.decode('cp932')
+            instrtext = instr.decode('cp932', 'surrogateescape')
             if re.search(r'_LVSV|_STTI|_MSAD|_ZM|SEL[R]', instrtext) is not None:
                 outcoll.append(
                     "<{0:04d}>".format(counter) + instrtext.replace("^", "_r")
@@ -86,7 +86,7 @@ def process_path(sourcepath):
 
         if len(outcoll) > 0:
             fnprep = os.path.join("20decodedscript", outtplpath)
-            with open(fnprep, 'wt', encoding="utf-8") as outfile:
+            with open(fnprep, 'wt', encoding="cp932", errors='surrogateescape') as outfile:
                 outfile.write(u"\n".join(outcoll))
 
     return status
