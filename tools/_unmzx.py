@@ -2,12 +2,17 @@
 
 import os
 import shutil
-from sys import stderr
+from sys import stderr, argv
 from struct import unpack
 from pathlib import Path
 from mzx.decomp_mzx0 import mzx0_decompress
 
-for file_path in Path().glob('**/*.[Mm][Zz][Xx]'):
+if __name__ == '__main__':
+    if len(argv) > 1:
+        args = Path(argv[1])
+    else: args = Path('.')
+
+for file_path in args.glob('**/*.[Mm][Zz][Xx]'):
     out_path = file_path.with_suffix('.ini')
     with file_path.open('rb') as data:
         offset = 7 if(data.read(2) == b'LV') else 0
