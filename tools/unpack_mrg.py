@@ -3,29 +3,32 @@
 # MRG Extractor
 # comes with ABSOLUTELY NO WARRANTY.
 #
-# Copyright (C) 2016 Quibi
-# Copyright (C) 2016 Hintay <hintay@me.com>
+# Copyright (C) 2016, 2019 Hintay <hintay@me.com>
 #
 # Portions Copyright (C) 2016 Quibi
 #
 # MRG files extraction utility
 # For more information, see Specifications/mzp_format.md
 
-import os
+import argparse
 import sys
 import struct
 from pathlib import Path
 
-INPUT_FILE_NAME = 'allscr.mrg'
+INPUT_FILE_NAME = Path('allscr.mrg')
 MODE = 'fate'
+
 
 def parse_args():
     if len(sys.argv) > 1:
         args = Path(sys.argv[1])
-        if args.is_dir(): return args
-        elif args.is_file(): return args.parent
+        if args.is_dir():
+            return args
+        elif args.is_file():
+            return args.parent
+    else:
+        return Path('.')
 
-    else: return Path('.')
 
 class ArchiveEntry:
     def __init__(self, sector_offset, offset, sector_size_upper_boundary, size, number_of_entries):
@@ -39,15 +42,24 @@ class ArchiveEntry:
 
 
 if __name__ == '__main__':
-    args = parse_args()
-    try:
-        input_file = open(args.joinpath(INPUT_FILE_NAME), 'rb')
-    except FileNotFoundError:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('input', metavar='input_files', help='Input file or folder.', nargs='?')
+    args = parser.parse_args()
+
+    if args.input:
+        input_path = Path(args.input)
+        if input_path.is_file():
+            input_path = input_path.parent
+    else:
+        input_path = Path('.')
+
+    file_path = input_path.joinpath(INPUT_FILE_NAME)
+    if file_path.is_file():
+        input_file = open(file_path, 'rb')
+    else:
         print("allscr.mrg not found. Please pass the path to the folder it is located in.")
         sys.exit(1)
-    except Exception as e:
-        print(e)
-        sys.exit(1)
+
     header = input_file.read(6)
     print('header: {0}'.format(header.decode('ASCII')))
 
@@ -79,18 +91,19 @@ if __name__ == '__main__':
             file_name_bytes, = struct.unpack('<32s', input_file.read(32))
             file_name_bytes = file_name_bytes.replace(b'\x01', b'')
             file_name = file_name + file_name_bytes[0:file_name_bytes.index(b'\x00')].decode('932', 'ignore')
-        if not file_name: file_name = 'unknown' + str(i)
+        if not file_name:
+            file_name = 'unknown' + str(i)
         file_names.append(file_name + '.mzx')
 
-    output_dir = args.joinpath(os.path.splitext(INPUT_FILE_NAME)[0] + '-unpacked')
-    if not os.path.isdir(output_dir):
-        os.mkdir(output_dir)
+    output_dir = input_path.joinpath(INPUT_FILE_NAME.stem + '-unpacked')
+    if not output_dir.is_dir():
+        output_dir.mkdir()
 
     for index, entry in enumerate(entries_descriptors):
         input_file.seek(entry.real_offset)
         data = input_file.read(entry.real_size)
-        output_file_name = os.path.join(output_dir, file_names[index])
-        print(output_file_name, file=sys.stderr)
+        output_file_name = output_dir.joinpath(file_names[index])
+        print(output_file_name.name, file=sys.stderr)
         output_file = open(output_file_name, 'wb')
         output_file.write(data)
         output_file.close()
